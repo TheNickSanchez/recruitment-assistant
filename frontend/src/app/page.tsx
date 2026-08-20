@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { FutureFeaturesPanel } from "@/components/FutureFeaturesPanel";
 import { RequisitionForm } from "@/components/RequisitionForm";
-import { pollRun, submitRun } from "@/lib/runClient";
+import { pollRun, RunClientError, submitRun } from "@/lib/runClient";
 import type { ChatMessage as ChatMessageType, JobRequisition } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 700;
@@ -12,7 +12,17 @@ const POLL_INTERVAL_MS = 700;
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [isRunning, setIsRunning] = useState(false);
-  const runStartRef = useRef<number>(0);
+
+  function setAssistantFailed(assistantId: string, err: unknown) {
+    const envelope =
+      err instanceof RunClientError
+        ? err.envelope
+        : { code: "unknown_error", message: err instanceof Error ? err.message : "Unknown error." };
+    setMessages((prev) =>
+      prev.map((m) => (m.id === assistantId ? { id: m.id, role: "assistant", status: "failed", error: envelope } : m))
+    );
+    setIsRunning(false);
+  }
 
   async function handleSubmit(requisition: JobRequisition) {
     const userMessage: ChatMessageType = {
@@ -28,12 +38,22 @@ export default function Home() {
     ]);
     setIsRunning(true);
 
-    const { run_id } = await submitRun(requisition);
-    runStartRef.current = 0;
+    let run_id: string;
+    try {
+      ({ run_id } = await submitRun(requisition));
+    } catch (err) {
+      setAssistantFailed(assistantId, err);
+      return;
+    }
 
     const tick = async () => {
-      runStartRef.current += POLL_INTERVAL_MS;
-      const result = await pollRun(run_id, requisition, runStartRef.current);
+      let result;
+      try {
+        result = await pollRun(run_id);
+      } catch (err) {
+        setAssistantFailed(assistantId, err);
+        return;
+      }
 
       setMessages((prev) =>
         prev.map((m) =>
