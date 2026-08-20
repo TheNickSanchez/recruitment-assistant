@@ -1,0 +1,68 @@
+research_candidates_task:
+  description: >
+    Find up to {candidate_count} potential candidates for the following job
+    requisition:
+
+    Job Title: {job_title}
+    Job Description: {job_description}
+    Responsibilities: {responsibilities}
+    Requirements: {requirements}
+    Preferred Qualifications: {preferred_qualifications}
+    Perks: {perks}
+
+    Use web search and page-scraping tools only. Do not attempt to scrape
+    LinkedIn directly (LinkedIn sourcing is out of MVP scope).
+  expected_output: >
+    A markdown list of up to {candidate_count} candidates. For each candidate,
+    include: name, any publicly available contact info found, source URL(s),
+    and a brief suitability profile (2-4 sentences) explaining why they might
+    fit the role. Plain markdown, no code fences.
+  agent: researcher
+
+evaluate_and_score_candidates_task:
+  description: >
+    Evaluate and score each candidate from the Researcher's output against
+    this job's requirements:
+
+    Job Title: {job_title}
+    Requirements: {requirements}
+    Preferred Qualifications: {preferred_qualifications}
+
+    Do not attempt to scrape LinkedIn profiles directly. Base each score on
+    how well the candidate's public profile matches the stated requirements
+    and preferred qualifications.
+  expected_output: >
+    A ranked markdown list of the same candidates, each with a numeric score
+    (0-100), a short written justification for the score, and the strongest
+    matching qualifications. Ordered from highest to lowest score. Plain
+    markdown, no code fences.
+  agent: evaluator
+  context:
+    - research_candidates_task
+
+recommend_candidates_task:
+  description: >
+    Using the Evaluator's ranked, scored candidate list, produce a single
+    consolidated markdown report for the recruiter regarding this job
+    requisition:
+
+    Job Title: {job_title}
+    Perks: {perks}
+
+    The report must contain two sections:
+    1. "## Recommendations" — the recommended candidates in ranked order,
+       with their scores and justifications carried over from the
+       Evaluator's output.
+    2. "## Outreach Guidance" — for each recommended candidate (or logical
+       segment of candidates), suggested outreach method(s) and a draft
+       message template that highlights the role's perks (listed above)
+       where relevant. This is draft-only guidance: no message is sent to
+       any candidate.
+  expected_output: >
+    One markdown report with exactly the two headings "## Recommendations"
+    and "## Outreach Guidance", in that order, populated per the description
+    above. Plain markdown, no code fences.
+  agent: recommender
+  context:
+    - research_candidates_task
+    - evaluate_and_score_candidates_task

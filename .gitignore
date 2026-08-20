@@ -8,6 +8,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
 
 # Editor/OS
 .DS_Store
+
+# Runtime Trace Log output (per-run logs, not committed)
+project-context/2.build/logs/*.jsonl

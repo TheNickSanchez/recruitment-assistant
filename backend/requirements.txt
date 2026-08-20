@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+crewai>=0.80
+crewai-tools>=0.17
+python-dotenv>=1.0
+pyyaml>=6.0
+
+# Testing
+pytest>=8.0
+httpx>=0.27
