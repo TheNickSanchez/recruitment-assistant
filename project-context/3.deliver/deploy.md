@@ -65,10 +65,13 @@ Names only — copy `.env.example` → `.env` (repo root) and `frontend/.env.exa
 | `OPENAI_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | CrewAI / LiteLLM | Without a real key the pipeline fails with `pipeline_error` (QA DEF-2). |
 | `OPENAI_MODEL` | repo-root `.env.example` | No | CrewAI default LLM | Example default `gpt-4o`. Provider/model is still a PRD Open Question; this repo inherited OpenAI env names. |
 | `SERPER_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | `SerperDevTool` | Required for researcher/evaluator/recommender web search. |
-| `CREWAI_TELEMETRY_OPT_OUT` | repo-root `.env.example` | Recommended `true` | CrewAI | Compose also sets this. QA DEF-4: telemetry still attempted if the process never received the var (same as DEF-1). |
+| `CREWAI_TELEMETRY_OPT_OUT` | repo-root `.env.example` | Recommended `true` | CrewAI anonymous telemetry | Distinct from AMP **tracing**. QA DEF-4: telemetry still attempted if the process never received the var (same as DEF-1). |
+| `CREWAI_TRACING_ENABLED` | repo-root `.env.example` | No (default `false`) | `RecruitmentCrew` (`tracing=True` when set) | Opt-in CrewAI AMP traces. Requires `crewai login`. Sends prompts/tool I/O (candidate data) to CrewAI AMP. |
+| `LOG_LEVEL` | repo-root `.env.example` | No (default `INFO`) | stdlib logging | `DEBUG` / `INFO` / `WARNING` / `ERROR`. Health and run-status polls are `DEBUG`. |
+| `LOG_TO_FILE` | repo-root `.env.example` | No (default `true`) | stdlib logging | Rotating `project-context/2.build/logs/app.log` (2 MB × 3 backups). Stdout always. |
 | `AAMAD_TARGET_RUNTIME` | repo-root `.env.example` | No (docs/config) | AAMAD / operator | `crewai`. Application runtime does not switch on this at request time. |
-| `APP_NAME` | repo-root `.env.example` | No | Operator/docs | Not read by FastAPI/Next.js in the current MVP. |
-| `APP_ENV` | repo-root `.env.example` | No | Operator/docs | Same — informational. |
+| `APP_NAME` | repo-root `.env.example` | No | Startup log | Included in the INFO startup line. |
+| `APP_ENV` | repo-root `.env.example` | No | Startup log | Included in the INFO startup line (default `development`). |
 | `NEXT_PUBLIC_API_URL` | `frontend/.env.example` | No (has default) | Next.js browser client | Default `http://localhost:8000`. Must be set at **frontend build** time for Docker/production `next start`. |
 
 **How the backend gets keys (QA DEF-1)**: `python-dotenv` is listed in `backend/requirements.txt` but `load_dotenv` is **not** called in application code. This persona does not change application logic. Operators must inject env into the process:
@@ -145,14 +148,73 @@ Because run state is in-process only, restart always drops in-flight and complet
 - **Candidate data**: not stored server-side; it still transits OpenAI and Serper during a run. Provider terms are an unresolved PRD Open Question.
 - **Enterprise IAM / SSO / network segmentation**: Future Work.
 
-## Monitoring / logging overview
+## Monitoring & Observability
 
-| Signal | Where | What it covers |
+SAD §5 still defers a dedicated APM stack. This release adds **basic process logging** plus **optional CrewAI AMP tracing**.
+
+### What to monitor
+
+| Signal | Why it matters | How to watch |
 |---|---|---|
-| Process stdout | uvicorn / `next` / `docker compose logs` | Crew verbose output, HTTP access, Next.js errors |
-| Trace Log JSONL | `project-context/2.build/logs/{run_id}.jsonl` | `run_submitted` / `run_started` / `run_succeeded` / `run_failed` (secret-redacted). Gitignored `*.jsonl`. |
-| Health | `GET /health` | Process up, not pipeline success |
-| Prompt Trace | **Not implemented** | Adapter gap recorded in backend.md / qa.md |
+| Process up | Operator can submit runs | `GET /health` → `{"status":"ok"}`; Compose healthcheck |
+| API 4xx/5xx | Bad input vs backend faults | `WARNING`/`ERROR` lines `request method=… status=…` in app logs |
+| Run lifecycle | FR-1 submit → execute → finish | `run submitted` / `crew run started` / `crew kickoff starting` / `crew task finished` / `crew run succeeded` or `crew run failed` |
+| Pipeline failures | Missing keys, LLM/search errors | `ERROR` with stack (`crew run failed`, `crew kickoff failed`); JSONL `run_failed` |
+| Cost / duration | Sequential LLM + search; minutes per run | Wall-clock from kickoff→completed logs; CrewAI AMP token/cost metrics if tracing is on |
+| CrewAI AMP traces (opt-in) | Agent reasoning, tools, LLM prompts | [app.crewai.com](https://app.crewai.com) Traces tab |
+
+Do **not** treat `/health` as “pipeline healthy” — it only means the FastAPI process is up.
+
+High-frequency `GET /health` and `GET /api/runs/{run_id}` polls are logged at **DEBUG** so INFO stays readable.
+
+### Log levels and where logs are stored
+
+| Level | Typical events |
+|---|---|
+| `DEBUG` | Health checks; successful status polls |
+| `INFO` | Startup/shutdown; `POST /api/runs`; crew kickoff/task/complete |
+| `WARNING` | 4xx (validation `422`, unknown run `404`) |
+| `ERROR` | 5xx; unhandled request exceptions; crew/pipeline exceptions (`logger.exception`) |
+
+| Store | Path / sink | Contents |
+|---|---|---|
+| Stdout | uvicorn terminal or `docker compose logs -f backend` | Same events; secret-redacted |
+| App log file | `project-context/2.build/logs/app.log` | Rotating file (gitignored `*.log`); disable with `LOG_TO_FILE=false` |
+| Per-run JSONL | `project-context/2.build/logs/{run_id}.jsonl` | `run_submitted` / `run_started` / `run_succeeded` / `run_failed` (secret-redacted). Gitignored `*.jsonl`. |
+| Crew verbose | stdout (Crew `verbose=True`) | CrewAI’s own agent/task console output |
+| Prompt Trace (local AAMAD adapter) | **Not implemented** | Local rendered-prompt capture is still a backend.md gap. Use CrewAI AMP tracing (below) if you need prompt/tool detail. |
+
+Startup log includes `runtime=crewai`, `LOG_LEVEL`, and whether AMP tracing is enabled. Request logs include method, path, status, and duration_ms. Crew logs include `job_title` and `candidate_count` only — not the full requisition or report body.
+
+### CrewAI tracing setup and access (optional)
+
+AMP tracing is **off by default** (`CREWAI_TRACING_ENABLED=false`) because traces include prompts and tool I/O (candidate-identifying content). `tracing=True` is passed on `RecruitmentCrew` when the operator opts in.
+
+1. Create a free account at [app.crewai.com](https://app.crewai.com).
+2. From the backend venv (CLI lives in the `crewai` package):
+
+   ```bash
+   cd backend
+   source .venv/bin/activate
+   crewai login
+   ```
+
+   The CLI opens a browser, asks for a device code, and authenticates this machine to CrewAI AMP.
+
+3. Set in repo-root `.env` (loaded via `--env-file` / Compose `env_file`):
+
+   ```
+   CREWAI_TRACING_ENABLED=true
+   ```
+
+   Restart uvicorn or Compose so `RecruitmentCrew` is constructed with `tracing=True`.
+
+   Global alternative (same effect for Crews that do not pass `tracing=False`): `export CREWAI_TRACING_ENABLED=true` or `crewai traces enable`. This project’s explicit `tracing=` flag follows the env flag so the runbook and code stay aligned.
+
+4. Run a requisition through the chat UI (or `POST /api/runs`).
+5. View traces: log in at [app.crewai.com](https://app.crewai.com) → **Traces** tab, or open [trace batches](https://app.crewai.com/crewai_plus/trace_batches). You should see agent decisions, task timeline, tool calls, LLM calls, timing, and errors.
+
+`CREWAI_TELEMETRY_OPT_OUT=true` only suppresses anonymous telemetry (`telemetry.crewai.com`). It does **not** replace AMP tracing. If traces do not appear: confirm `crewai login`, `CREWAI_TRACING_ENABLED=true` in the **process** environment, a real crew execution (not the pytest stub), and network access to CrewAI AMP.
 
 No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control remains `max_rpm=20` and bounded `candidate_count` (default 10, max 25).
 
@@ -170,6 +232,7 @@ No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control r
 | Polling never ends | No cancel/timeout in UI (qa.md known limitation) | Stop the backend or refresh the page; there is no cancel API. |
 | Docker frontend cannot reach API | `NEXT_PUBLIC_API_URL` set to `http://backend:8000` | Use `http://localhost:8000` (browser-side). Rebuild frontend. |
 | Python 3.14 install fails | Unsupported wheels | Use 3.13 (`.python-version` / backend image). |
+| CrewAI AMP traces missing | Not logged in; tracing env not on the process; pytest stub | `crewai login`; `CREWAI_TRACING_ENABLED=true` + restart; run a real crew, then check [Traces](https://app.crewai.com/crewai_plus/trace_batches). |
 | Healthcheck slow to pass | CrewAI import at uvicorn startup | Compose `start_period` is 90s; wait and `docker compose logs backend`. |
 
 ## CI scaffolding (`*configure-cicd`)
@@ -183,11 +246,11 @@ No deploy job. Do not treat a green CI as a live-success-path certification (tha
 
 ## Future work (ops, not this release)
 
-- Dedicated monitoring, autoscaling, multi-region, IaC.
+- Dedicated APM, alerting, autoscaling, multi-region, IaC.
 - AuthN/AuthZ and CORS allowlist if exposed beyond localhost.
 - `@security.eng` assessment (`security.md`) before any non-localhost host.
 - In-app `load_dotenv` (backend change, not this persona) **or** keep `--env-file` as the documented contract.
-- Prompt Trace; FE↔API Playwright in CI; live success-path smoke with real keys.
+- Local AAMAD Prompt Trace files; FE↔API Playwright in CI; live success-path smoke with real keys.
 - Frontend poll timeout / cancel.
 
 ## Sources
@@ -202,7 +265,8 @@ No deploy job. Do not treat a green CI as a live-success-path certification (tha
 - `.env.example`, `frontend/.env.example`
 - `.cursor/rules/adapter-crewai.mdc`, `.cursor/rules/delivery-workflow.mdc`
 - `.cursor/agents/devops-eng.md`
-- Implemented layout: `backend/app/main.py`, `backend/requirements.txt`, `backend/app/config/*.yaml`, `frontend/`
+- Implemented layout: `backend/app/main.py`, `backend/app/logging_config.py`, `backend/app/crew.py`, `backend/requirements.txt`, `backend/app/config/*.yaml`, `frontend/`
+- CrewAI tracing docs: https://docs.crewai.com/en/observability/tracing
 
 ## Assumptions
 
@@ -215,6 +279,7 @@ No deploy job. Do not treat a green CI as a live-success-path certification (tha
 - Compose frontend talks to the API at `http://localhost:8000` from the **browser**.
 - No live cloud deploy was requested; config + runbook only.
 - Missing `setup.md` is not blocking (same as Build personas).
+- CrewAI AMP tracing stays opt-in (`CREWAI_TRACING_ENABLED` default false) so candidate-bearing prompts are not sent to CrewAI AMP unless the operator authenticates and enables it.
 
 ## Open Questions
 
@@ -239,3 +304,15 @@ No deploy job. Do not treat a green CI as a live-success-path certification (tha
 - **Application logic**: not modified.
 - **Upstream artifacts**: `prd.md`, `sad.md`, `qa.md`, `backend.md`, `frontend.md`, `integration.md`, `aamad.config.yml`
 - **Tooling**: Cursor IDE agent; no CrewAI kickoff for this persona.
+
+### Audit (observability follow-up)
+
+- **Timestamp**: 2026-08-24
+- **Persona**: `devops-eng`
+- **Action**: `document-deploy` (Monitoring & Observability) plus application logging (operator-requested; no agent/task logic change)
+- **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai`
+- **Logging**: startup/shutdown; request middleware (method/path/status/duration); crew kickoff/task/complete; `logger.exception` on pipeline and unhandled request errors; rotating `app.log` + stdout; JSONL lifecycle unchanged
+- **CrewAI tracing**: `Crew(..., tracing=env CREWAI_TRACING_ENABLED)` default false; documented `crewai login` and AMP dashboard
+- **Prompt Trace (local)**: still omitted in-app; AMP traces optional
+- **Live deploy**: not executed
+- **Secrets**: env var names only; log redaction filter for API-key-like strings

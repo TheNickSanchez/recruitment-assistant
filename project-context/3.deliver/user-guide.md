@@ -65,7 +65,7 @@ The sidebar “Coming later” items (run history, LinkedIn sourcing, send outre
 | Page keeps polling | No cancel control in MVP; stop the backend or reload. |
 | Telemetry SSL noise in backend logs | Ensure `CREWAI_TELEMETRY_OPT_OUT=true` is in the **process** environment. |
 
-**Logs**: terminal output from uvicorn/Next.js, or `docker compose logs`. Per-run JSONL: `project-context/2.build/logs/{run_id}.jsonl` (not committed).
+**Logs**: stdout (`docker compose logs` or the uvicorn terminal), rotating `project-context/2.build/logs/app.log`, and per-run JSONL `project-context/2.build/logs/{run_id}.jsonl`. Optional CrewAI AMP traces: see [`deploy.md`](deploy.md) Monitoring & Observability (`crewai login`, `CREWAI_TRACING_ENABLED=true`).
 
 More cases: [`deploy.md`](deploy.md) Troubleshooting.
 
@@ -98,6 +98,6 @@ Use [`deploy.md`](deploy.md) as the runbook: local vs Docker, env-var matrix (na
 
 - **Timestamp**: 2026-08-24
 - **Persona**: `devops-eng`
-- **Action**: `document-user-guide`
+- **Action**: `document-user-guide` (log-path sync after observability work)
 - **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai`
 - **Prompt Trace**: omitted — documentation artifact, not a production LLM task.

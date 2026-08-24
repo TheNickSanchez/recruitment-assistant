@@ -19,3 +19,5 @@ venv/
 
 # Runtime Trace Log output (per-run logs, not committed)
 project-context/2.build/logs/*.jsonl
+project-context/2.build/logs/*.log
+project-context/2.build/logs/*.log.*

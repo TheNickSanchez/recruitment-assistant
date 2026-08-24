@@ -7,11 +7,13 @@ the LLM call) — recorded as a gap in backend.md, not fabricated.
 """
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 LOG_DIR = Path(__file__).resolve().parents[2] / "project-context" / "2.build" / "logs"
+_logger = logging.getLogger("recruitment.trace")
 
 _SECRET_PATTERN = re.compile(
     r"(sk-[A-Za-z0-9]{10,}|(?i:api[_-]?key)\s*[=:]\s*\S+)"
@@ -33,3 +35,4 @@ def log_event(run_id: str, event: str, **details) -> None:
     log_file = LOG_DIR / f"{run_id}.jsonl"
     with log_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
+    _logger.info("run_event run_id=%s event=%s", run_id, event)

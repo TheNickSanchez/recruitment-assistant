@@ -14,3 +14,9 @@ def test_crew_module_uses_sequential_process():
     source = CREW_PY.read_text()
     assert "Process.sequential" in source
     assert "memory=False" in source
+
+
+def test_crew_module_gates_tracing_on_env():
+    source = CREW_PY.read_text()
+    assert "CREWAI_TRACING_ENABLED" in source
+    assert "tracing=tracing" in source

@@ -9,10 +9,14 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import ScrapeWebsiteTool, SerperDevTool
 
+from app.logging_config import env_flag, get_logger
+
 # Adapter rule "Execution" baseline controls (.cursor/rules/adapter-crewai.mdc).
 MAX_ITER = 12
 MAX_RETRY_LIMIT = 2
 MAX_RPM = 20
+
+logger = get_logger("crew")
 
 
 @CrewBase
@@ -73,6 +77,7 @@ class RecruitmentCrew:
 
     @crew
     def crew(self) -> Crew:
+        tracing = env_flag("CREWAI_TRACING_ENABLED")
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
@@ -80,10 +85,51 @@ class RecruitmentCrew:
             memory=False,
             max_rpm=MAX_RPM,
             verbose=True,
+            tracing=tracing,
+            task_callback=_log_task_output,
         )
+
+
+def _log_task_output(output) -> None:
+    """Observability only — does not alter task output or agent behavior."""
+    name = getattr(output, "name", None) or getattr(output, "description", "")
+    agent_role = ""
+    agent = getattr(output, "agent", None)
+    if agent is not None:
+        agent_role = getattr(agent, "role", "") or str(agent)
+    summary = str(output)
+    logger.info(
+        "crew task finished name=%s agent=%s output_chars=%s",
+        name or "(unnamed)",
+        agent_role or "(unknown)",
+        len(summary),
+    )
 
 
 def run_crew(inputs: dict) -> str:
     """Kick off the crew synchronously and return the final markdown report."""
-    result = RecruitmentCrew().crew().kickoff(inputs=inputs)
-    return str(result)
+    job_title = inputs.get("job_title", "")
+    candidate_count = inputs.get("candidate_count")
+    tracing = env_flag("CREWAI_TRACING_ENABLED")
+    logger.info(
+        "crew kickoff starting job_title=%s candidate_count=%s tracing=%s",
+        job_title,
+        candidate_count,
+        tracing,
+    )
+    try:
+        result = RecruitmentCrew().crew().kickoff(inputs=inputs)
+    except Exception:
+        logger.exception(
+            "crew kickoff failed job_title=%s candidate_count=%s",
+            job_title,
+            candidate_count,
+        )
+        raise
+    text = str(result)
+    logger.info(
+        "crew kickoff completed job_title=%s report_chars=%s",
+        job_title,
+        len(text),
+    )
+    return text
