@@ -13,5 +13,9 @@ venv/
 # Editor/OS
 .DS_Store
 
+# Cursor does not read repo-level permissions files. Keep any local
+# permissions.json out of git so an allow-all grant cannot be committed.
+.cursor/permissions.json
+
 # Runtime Trace Log output (per-run logs, not committed)
 project-context/2.build/logs/*.jsonl
