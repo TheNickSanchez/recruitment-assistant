@@ -6,13 +6,14 @@ example](https://github.com/crewAIInc/crewAI-examples/tree/main/crews/recruitmen
 AAMAD framework's Define → Build → Deliver workflow (see [`AGENTS.md`](AGENTS.md) and
 [`CHECKLIST.md`](CHECKLIST.md)).
 
-> **Status**: Phase 1 (Define) complete. Phase 2 (Build) has not started — there is no application code
-> in this repository yet. See [Project Structure](#project-structure) and [Next Steps for
-> Contributors](#next-steps-for-contributors) below.
+> **Status**: Phase 1 (Define) is complete. Phase 2 (Build) has a running MVP: FastAPI + CrewAI backend,
+> Next.js chat UI, wired submit/poll API, and a QA report with a **conditional pass** (failure path
+> verified; live success path needs real API keys). Next is `@security.eng`, then Phase 3 (Deliver).
+> See [`project-context/2.build/qa.md`](project-context/2.build/qa.md).
 
 Full requirements live in [`project-context/1.define/prd.md`](project-context/1.define/prd.md) (PRD) and
-[`project-context/1.define/mrd.md`](project-context/1.define/mrd.md) (MRD). This README summarizes them;
-the PRD is the source of truth if anything here drifts.
+[`project-context/1.define/sad.md`](project-context/1.define/sad.md) (SAD). This README summarizes them;
+the PRD is the source of truth for product scope if anything here drifts.
 
 ## Problem Statement & Value Proposition
 
@@ -30,120 +31,146 @@ each run's report good enough to act on (see [Success Metrics](#success-metrics)
 
 MVP scope (PRD §4, Priority P0):
 
-- **Submit a job requisition** (title, description, responsibilities, requirements, preferred
-  qualifications, perks) through a chat interface and trigger a single end-to-end run.
-- **Candidate research** — find a bounded list of candidates (default: 10) with contact info and a brief
-  suitability profile, sourced via web search/scraping only (no LinkedIn scraping — see
+- **Submit a job requisition** (title, description, plus optional responsibilities, requirements,
+  preferred qualifications, and perks) through a chat interface and trigger a single end-to-end run.
+- **Candidate research** — find a bounded list of candidates (default: 10, max 25) with contact info and
+  a brief suitability profile, sourced via web search/scraping only (no LinkedIn scraping — see
   [Architecture](#application-architecture) below).
-- **Match & score** — rank candidates against the requisition with a score and written justification per
+- **Evaluate & score** — rank candidates against the requisition with a score and written justification
+  per candidate.
+- **Recommendation report with outreach guidance** — one markdown report with `## Recommendations` and
+  `## Outreach Guidance` (methods and draft message templates). **Draft-only**: no message is sent to any
   candidate.
-- **Outreach strategy drafting** — generate outreach methods and message templates per candidate/segment.
-  **Draft-only**: no message is sent to any candidate automatically.
-- **Consolidated report** — one markdown report combining candidates, scores/justifications, and outreach
-  drafts, rendered back in the chat interface.
 
 Deferred to Future Work (PRD §4, P2): authenticated LinkedIn sourcing, actual outreach sending,
-persistent storage across runs, multi-requisition/multi-user support.
+persistent storage across runs, multi-requisition/multi-user support. The chat UI shows these as disabled
+“Coming later” placeholders.
 
 ### Success Metrics
 
 - **Recruiter time saved (hours/week)** — the primary intended benefit. There is currently no sourced
   manual-time baseline; the operator is expected to self-log their own pre-tool time so the metric has a
-  real comparison point (PRD §7). This is an open item, not a committed number — see
-  [Next Steps](#next-steps-for-contributors).
+  real comparison point (PRD §7).
 - Technical: a run completes end-to-end without manual intervention; candidate list stays within the
   bounded default to control LLM/search cost.
 - UX: qualitative — the operator finds the report usable enough to act on.
 
 ## Application Architecture
 
-A sequential, four-agent [CrewAI](https://github.com/crewAIInc/crewAI) pipeline (`Process.sequential`, no
-inter-agent delegation), adapted from the reference example:
+A sequential, **three-agent** [CrewAI](https://github.com/crewAIInc/crewAI) pipeline
+(`Process.sequential`, no inter-agent delegation), behind a FastAPI job API and a Next.js chat UI:
 
 ```mermaid
 flowchart LR
-    U[Operator: submits job requisition via chat] --> R
-    R[Researcher<br/>Job Candidate Researcher] --> M
-    M[Matcher<br/>Candidate Matcher and Scorer] --> C
-    C[Communicator<br/>Candidate Outreach Strategist] --> Rep
-    Rep[Reporter<br/>Candidate Reporting Specialist] --> O[Consolidated markdown report → chat]
+    U[Operator: submits job requisition via chat] --> API
+    API[FastAPI POST /api/runs] --> R
+    R[Researcher] --> E
+    E[Evaluator] --> Rec
+    Rec[Recommender] --> O[Markdown report]
+    O --> UI[Chat UI polls GET /api/runs/id]
 ```
 
 | Agent | Role | Goal | Tools (MVP) |
 |---|---|---|---|
-| `researcher` | Job Candidate Researcher | Find potential candidates for the job | Web search, website scraping |
-| `matcher` | Candidate Matcher and Scorer | Match candidates to the job and score them | Web search, website scraping |
-| `communicator` | Candidate Outreach Strategist | Develop outreach strategies for selected candidates | Web search, website scraping |
-| `reporter` | Candidate Reporting Specialist | Report the best candidates to the recruiter | None — synthesizes prior agents' output |
+| `researcher` | Job Candidate Researcher | Find potential candidates for the job | `SerperDevTool`, `ScrapeWebsiteTool` |
+| `evaluator` | Candidate Evaluator and Scorer | Evaluate and score candidates against the job | `SerperDevTool`, `ScrapeWebsiteTool` |
+| `recommender` | Candidate Recommendation and Outreach Strategist | Recommend candidates with outreach drafts | `SerperDevTool`, `ScrapeWebsiteTool` |
 
-**Design notes** (see PRD §3 for full detail):
+**Design notes** (see PRD §3 and SAD §2–§4):
 
-- Each stage's output feeds the next via task context-chaining — you can't score candidates that haven't
-  been found, and you can't draft outreach for candidates that haven't been scored.
-- **The reference example's LinkedIn-cookie-scraping tool is intentionally excluded from MVP scope.** The
-  original example's own README states that approach may violate LinkedIn's Terms of Service and risks
-  account bans; this project sources candidates via public web search/scraping only instead. Re-adding an
-  authenticated LinkedIn integration is tracked as Future Work and would need its own security/legal
-  review first.
-- No database — each run is stateless (job requisition in, report out); no candidate data is persisted
-  server-side at MVP.
-- Runtime target: `crewai` (from [`aamad.config.yml`](aamad.config.yml)). LLM provider/model and
-  web-search provider are still open decisions — see [Next Steps](#next-steps-for-contributors).
-- Interface: a minimal chat UI (not a bare CLI), per this repo's `@frontend.eng` convention — see
-  [`AGENTS.md`](AGENTS.md).
+- Each stage's output feeds the next via CrewAI `Task.context` chaining.
+- **The reference example's LinkedIn-cookie-scraping tool is intentionally excluded from MVP scope.**
+  Candidates are sourced via public web search/scraping only. Re-adding an authenticated LinkedIn
+  integration is Future Work and would need its own security/legal review.
+- No database — run state is in-memory for the life of the backend process; nothing is persisted
+  server-side across restarts.
+- Runtime target: `crewai` (from [`aamad.config.yml`](aamad.config.yml)). LLM calls use OpenAI via
+  `OPENAI_API_KEY` / `OPENAI_MODEL` (default `gpt-4o` in [`.env.example`](.env.example)); web search uses
+  Serper via `SERPER_API_KEY`.
+- Interface: Next.js 16 (App Router) + Tailwind chat UI on port 3000; FastAPI on port 8000
+  (`POST /api/runs`, `GET /api/runs/{run_id}`, `GET /health`). The UI polls until `succeeded` or
+  `failed` and surfaces errors in chat rather than failing silently.
 
 ## Getting Started
 
-There is no runnable application yet — Phase 2 (Build) hasn't produced code. Once Build is complete, this
-section should be updated with real setup/run instructions (see `setup.md` under
-`project-context/2.build/` once it exists). In the meantime, to work on this repo today:
+### Prerequisites
 
-1. **Prerequisites**: Python 3.9+, and (once Build starts) API keys for an LLM provider and a web-search
-   provider (e.g. Serper, matching the CrewAI reference's tool set) — provider/model choice is still an
-   open decision, see PRD Open Questions.
-2. **Review the requirements**: read [`project-context/1.define/prd.md`](project-context/1.define/prd.md)
-   and [`project-context/1.define/mrd.md`](project-context/1.define/mrd.md).
-3. **Continue the AAMAD workflow**: follow [`CHECKLIST.md`](CHECKLIST.md) starting at **Step 0:
-   Architecture Definition (`@system.arch`)** to produce the SAD, then proceed through Build (frontend,
-   backend, integration, QA, security) and Deliver.
-4. **Secrets**: never commit API keys or credentials — `aamad.config.yml` sets
-   `security.forbid_committed_secrets: true`. Use environment variables / a local `.env` (git-ignored)
-   once Build introduces one.
+- **Python 3.13** for the backend (CrewAI/FastAPI wheels are not published for 3.14 as of this build)
+- **Node.js 20+** for the frontend
+- API keys: `OPENAI_API_KEY` and `SERPER_API_KEY`
+
+### 1. Secrets
+
+Copy [`.env.example`](.env.example) to `.env` at the repo root and fill in real keys. Never commit `.env`
+(`security.forbid_committed_secrets: true`).
+
+The FastAPI app does **not** auto-load the repo-root `.env`. Pass it when starting uvicorn (see below).
+
+### 2. Backend
+
+```bash
+cd backend
+python3.13 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --env-file ../.env
+```
+
+Check `GET http://127.0.0.1:8000/health` → `{"status":"ok"}`.
+
+Unit/integration tests (mocked crew, no live LLM/search):
+
+```bash
+cd backend
+.venv/bin/python -m pytest -v
+```
+
+### 3. Frontend
+
+```bash
+cd frontend
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+npm install
+npm run dev                  # http://127.0.0.1:3000
+```
+
+Open the chat UI, enter a job title and description, and start a run. A full successful report needs
+valid OpenAI and Serper keys loaded into the backend process. Without them the UI should still show a
+`pipeline_error` in chat rather than failing silently.
 
 ## Project Structure
 
 ```
 recruitment-assistant/
 ├── .cursor/
-│   ├── agents/            # AAMAD persona definitions (@product-mgr, @system.arch, @backend.eng, ...)
-│   ├── prompts/           # Phase-specific prompts (e.g. prompt-phase-1, prompt-sync-docs)
+│   ├── agents/            # AAMAD persona definitions
+│   ├── prompts/           # Phase-specific prompts
 │   ├── rules/             # Always-on rules, including the crewai runtime adapter
 │   └── templates/         # MRD/PRD/SAD/SFS/user-guide/user-story templates
+├── backend/               # FastAPI + CrewAI (config/agents.yaml, config/tasks.yaml, tests/)
+├── frontend/              # Next.js 16 chat UI (submit/poll against the FastAPI API)
 ├── project-context/
-│   ├── 1.define/          # Phase 1 outputs — mrd.md, prd.md (this phase's deliverables)
-│   ├── 2.build/           # Phase 2 outputs — not yet populated (setup.md, frontend.md, backend.md, ...)
-│   └── 3.deliver/         # Phase 3 outputs — not yet populated (deploy.md, user-guide.md)
-├── aamad.config.yml        # Project preferences: runtime=crewai, language=python, security/testing gates
-├── AGENTS.md               # Bridge file: persona index and phase workflow summary
-├── CHECKLIST.md            # Step-by-step Define → Build → Deliver execution checklist
+│   ├── 1.define/          # mrd.md, prd.md, sad.md
+│   ├── 2.build/           # frontend.md, backend.md, integration.md, qa.md
+│   └── 3.deliver/         # not yet populated (deploy.md, user-guide.md)
+├── .env.example            # OPENAI_API_KEY, OPENAI_MODEL, SERPER_API_KEY (names only)
+├── aamad.config.yml        # runtime=crewai, language=python, security/testing gates
+├── AGENTS.md               # Persona index and phase workflow summary
+├── CHECKLIST.md            # Define → Build → Deliver execution checklist
 └── README.md               # This file
 ```
 
 ## Next Steps for Contributors
 
-Open decisions carried from the PRD (`project-context/1.define/prd.md` → Open Questions) that should be
-resolved before or during Build:
+Phase 2 remaining / Phase 3:
 
-- **LLM provider/model** — the CrewAI reference example defaults to GPT-4o; this project's runtime choice
-  (`crewai`) doesn't pin a model on its own.
-- **Web-search provider** — confirm Serper (`SerperDevTool`, matching the reference) or specify an
-  alternative.
-- **Time-savings baseline** — log a real manual-time-per-requisition baseline (hours/week spent
-  sourcing/screening/drafting by hand) so the primary success metric has something to compare against.
-- **Confirm the LinkedIn-sourcing exclusion** and the chat-UI assumption (vs. a closer CLI port of the
-  reference example) — both are currently PRD assumptions, not confirmed user decisions.
-- **Candidate data handling** — review the LLM and search providers' data-handling terms before real
+- **`@security.eng`** — required before Deliver (`aamad.config.yml` →
+  `security.require_security_assessment: true`). Produce `project-context/2.build/security.md`.
+- **`@devops.eng`** — deploy runbook + user guide (`project-context/3.deliver/`).
+- **Live success-path run** — supply real `OPENAI_API_KEY` and `SERPER_API_KEY` and start uvicorn with
+  `--env-file ../.env` so the process actually sees them (see QA DEF-1/DEF-2 in
+  [`qa.md`](project-context/2.build/qa.md)).
+- **Time-savings baseline** — log a real manual-time-per-requisition baseline so the primary success
+  metric has something to compare against (PRD §7).
+- **Candidate data handling** — review LLM and search providers' data-handling terms before real
   candidate data flows through them, even though nothing is persisted server-side.
-
-Process-wise, the next concrete step is invoking `@system.arch` to produce the SAD
-(`project-context/1.define/sad.md`), per [`CHECKLIST.md`](CHECKLIST.md) → **Phase 2, Step 0**.
