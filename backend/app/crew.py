@@ -9,6 +9,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import ScrapeWebsiteTool, SerperDevTool
 
+from app.llm import get_llm
 from app.logging_config import env_flag, get_logger
 
 # Adapter rule "Execution" baseline controls (.cursor/rules/adapter-crewai.mdc).
@@ -31,34 +32,34 @@ class RecruitmentCrew:
         # ScrapeWebsiteTool only. No LinkedIn tool (excluded from MVP scope).
         return [SerperDevTool(), ScrapeWebsiteTool()]
 
+    def _agent_kwargs(self) -> dict:
+        return {
+            "tools": self._tools(),
+            "llm": get_llm(),
+            "allow_delegation": False,
+            "max_iter": MAX_ITER,
+            "max_retry_limit": MAX_RETRY_LIMIT,
+        }
+
     @agent
     def researcher(self) -> Agent:
         return Agent(
             config=self.agents_config["researcher"],
-            tools=self._tools(),
-            allow_delegation=False,
-            max_iter=MAX_ITER,
-            max_retry_limit=MAX_RETRY_LIMIT,
+            **self._agent_kwargs(),
         )
 
     @agent
     def evaluator(self) -> Agent:
         return Agent(
             config=self.agents_config["evaluator"],
-            tools=self._tools(),
-            allow_delegation=False,
-            max_iter=MAX_ITER,
-            max_retry_limit=MAX_RETRY_LIMIT,
+            **self._agent_kwargs(),
         )
 
     @agent
     def recommender(self) -> Agent:
         return Agent(
             config=self.agents_config["recommender"],
-            tools=self._tools(),
-            allow_delegation=False,
-            max_iter=MAX_ITER,
-            max_retry_limit=MAX_RETRY_LIMIT,
+            **self._agent_kwargs(),
         )
 
     @task

@@ -17,6 +17,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.crew import run_crew
+from app.env_bootstrap import load_app_env
 from app.logging_config import configure_logging, env_flag, get_logger, log_level
 from app.models import (
     JobRequisition,
@@ -27,18 +28,23 @@ from app.models import (
 from app.run_store import run_store
 from app.trace_log import log_event
 
+# Prefer repo-root .env over IDE-injected env (e.g. Cursor crsr_ OPENAI_API_KEY).
+load_app_env(override=True)
+
 logger = get_logger("api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    load_app_env(override=True)
     configure_logging()
     logger.info(
-        "startup app=%s env=%s runtime=crewai log_level=%s tracing=%s",
+        "startup app=%s env=%s runtime=crewai log_level=%s tracing=%s base_url=%s",
         os.getenv("APP_NAME", "Recruitment Assistant"),
         os.getenv("APP_ENV", "development"),
         std_logging.getLevelName(log_level()),
         env_flag("CREWAI_TRACING_ENABLED"),
+        os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "(default OpenAI)",
     )
     yield
     logger.info("shutdown")

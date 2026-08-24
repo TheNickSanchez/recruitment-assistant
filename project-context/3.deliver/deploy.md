@@ -62,8 +62,9 @@ Names only — copy `.env.example` → `.env` (repo root) and `frontend/.env.exa
 
 | Variable | Where defined | Required | Used by | Notes |
 |---|---|---|---|---|
-| `OPENAI_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | CrewAI / LiteLLM | Without a real key the pipeline fails with `pipeline_error` (QA DEF-2). |
-| `OPENAI_MODEL` | repo-root `.env.example` | No | CrewAI default LLM | Example default `gpt-4o`. Provider/model is still a PRD Open Question; this repo inherited OpenAI env names. |
+| `OPENAI_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | CrewAI LLM | OpenAI key **or** LiteLLM virtual key. Cursor `crsr_...` keys are rejected (Cloud Agents API only). |
+| `OPENAI_MODEL` / `OPENAI_MODEL_NAME` | repo-root `.env.example` | No | CrewAI LLM | Model id the host expects (default `gpt-4o`). For LiteLLM, use the proxy’s model name (e.g. `claude-sonnet-4-6`). |
+| `OPENAI_BASE_URL` / `OPENAI_API_BASE` | repo-root `.env.example` | **Yes for LiteLLM** | CrewAI LLM (`custom_openai`) | OpenAI-compatible root ending in `/v1` (e.g. `http://localhost:4000/v1`). Omit for native `api.openai.com`. |
 | `SERPER_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | `SerperDevTool` | Required for researcher/evaluator/recommender web search. |
 | `CREWAI_TELEMETRY_OPT_OUT` | repo-root `.env.example` | Recommended `true` | CrewAI anonymous telemetry | Distinct from AMP **tracing**. QA DEF-4: telemetry still attempted if the process never received the var (same as DEF-1). |
 | `CREWAI_TRACING_ENABLED` | repo-root `.env.example` | No (default `false`) | `RecruitmentCrew` (`tracing=True` when set) | Opt-in CrewAI AMP traces. Requires `crewai login`. Sends prompts/tool I/O (candidate data) to CrewAI AMP. |
@@ -222,7 +223,7 @@ No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control r
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| `pipeline_error` / OpenAI connection or 401 | Missing or placeholder `OPENAI_API_KEY`; process did not load `.env` (QA DEF-1/DEF-2) | Confirm `.env` has real keys. Restart with `--env-file ../.env` or Compose `env_file`. |
+| `pipeline_error` / OpenAI connection or 401 | Missing/invalid key; hitting `api.openai.com` with a LiteLLM key; Cursor `crsr_` key; SSL intercept | Use a real OpenAI key **or** set `OPENAI_BASE_URL` to your LiteLLM `/v1` endpoint. Cursor keys are not supported. Restart with `--env-file ../.env`. |
 | Serper / search tool failures | Missing `SERPER_API_KEY` | Set the key in `.env` and restart the backend. |
 | Chat `network_error` / Failed to fetch | Backend down or `NEXT_PUBLIC_API_URL` wrong | Start uvicorn; for Docker rebuild frontend if the API URL changed (build-time var). |
 | `422` on submit | Missing title/description or `candidate_count` outside 1–25 | Fill required fields; keep candidate count in range. |
@@ -232,7 +233,7 @@ No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control r
 | Polling never ends | No cancel/timeout in UI (qa.md known limitation) | Stop the backend or refresh the page; there is no cancel API. |
 | Docker frontend cannot reach API | `NEXT_PUBLIC_API_URL` set to `http://backend:8000` | Use `http://localhost:8000` (browser-side). Rebuild frontend. |
 | Python 3.14 install fails | Unsupported wheels | Use 3.13 (`.python-version` / backend image). |
-| CrewAI AMP traces missing | Not logged in; tracing env not on the process; pytest stub | `crewai login`; `CREWAI_TRACING_ENABLED=true` + restart; run a real crew, then check [Traces](https://app.crewai.com/crewai_plus/trace_batches). |
+| CrewAI AMP traces missing | Not logged in; tracing env not on the process; **user consent declined**; pytest stub | `crewai login`; `crewai traces enable`; confirm `crewai traces status` shows User Consent ✅; `CREWAI_TRACING_ENABLED=true` + restart; run a real crew; check [Traces](https://app.crewai.com/crewai_plus/trace_batches). |
 | Healthcheck slow to pass | CrewAI import at uvicorn startup | Compose `start_period` is 90s; wait and `docker compose logs backend`. |
 
 ## CI scaffolding (`*configure-cicd`)
