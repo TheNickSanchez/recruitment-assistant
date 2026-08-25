@@ -226,7 +226,7 @@ AMP tracing is **off by default** (`CREWAI_TRACING_ENABLED=false`) because trace
 
 `CREWAI_TELEMETRY_OPT_OUT=true` only suppresses anonymous telemetry (`telemetry.crewai.com`). It does **not** replace AMP tracing. If traces do not appear: confirm `crewai login`, `crewai traces status` (User Consent ✅), `CREWAI_TRACING_ENABLED=true` in the **process** environment, a real crew execution (not the pytest stub), TLS trust via `SSL_CERT_FILE` / Zscaler bundle, and network access to CrewAI AMP.
 
-No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control remains `max_rpm=20` and bounded `candidate_count` (default 10, max 25).
+No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control remains `max_rpm=20` and bounded `candidate_count` (default 3, max 25).
 
 ## Troubleshooting
 

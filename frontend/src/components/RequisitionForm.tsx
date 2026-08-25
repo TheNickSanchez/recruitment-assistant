@@ -24,7 +24,7 @@ const EMPTY: JobRequisition = {
   requirements: "",
   preferred_qualifications: "",
   perks: "",
-  candidate_count: 10,
+  candidate_count: 3,
 };
 
 export function RequisitionForm({ disabled, onSubmit }: RequisitionFormProps) {
