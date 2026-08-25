@@ -39,6 +39,10 @@ class RecruitmentCrew:
             "allow_delegation": False,
             "max_iter": MAX_ITER,
             "max_retry_limit": MAX_RETRY_LIMIT,
+            # Trim oversized tool transcripts before force-final LLM calls;
+            # otherwise some OpenAI-compatible gateways return choices=None
+            # and CrewAI crashes with TypeError on response.choices[0].
+            "respect_context_window": True,
         }
 
     @agent
@@ -120,12 +124,21 @@ def run_crew(inputs: dict) -> str:
     )
     try:
         result = RecruitmentCrew().crew().kickoff(inputs=inputs)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "crew kickoff failed job_title=%s candidate_count=%s",
             job_title,
             candidate_count,
         )
+        # CrewAI OpenAI client: response.choices is None from some gateways
+        # after max_iter force-final (common when research overruns context).
+        if isinstance(exc, TypeError) and "NoneType" in str(exc) and "subscriptable" in str(exc):
+            raise RuntimeError(
+                "Crew hit the agent iteration limit and the LLM gateway "
+                "returned an empty completion (choices=None). Retry with a "
+                "smaller candidate_count (e.g. 1–3) and a clearer job "
+                "description so the researcher can Final Answer earlier."
+            ) from exc
         raise
     text = str(result)
     logger.info(

@@ -25,7 +25,10 @@ class JobRequisition(BaseModel):
     requirements: str = ""
     preferred_qualifications: str = ""
     perks: str = ""
-    candidate_count: int = Field(default=10, ge=1, le=25)
+    # Default 3 keeps research within agent max_iter for typical MVP runs;
+    # higher counts (up to 25) remain allowed but are more likely to hit
+    # iteration limits if the researcher does not finalize early.
+    candidate_count: int = Field(default=3, ge=1, le=25)
 
 
 class RunSubmissionResponse(BaseModel):

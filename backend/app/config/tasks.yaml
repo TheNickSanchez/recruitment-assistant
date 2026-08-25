@@ -12,11 +12,18 @@ research_candidates_task:
 
     Use web search and page-scraping tools only. Do not attempt to scrape
     LinkedIn directly (LinkedIn sourcing is out of MVP scope).
+
+    Iteration budget (critical): keep tool use minimal. Prefer 2–4 focused
+    searches, then immediately produce your Final Answer with whatever
+    candidates you have (fewer than {candidate_count} is acceptable). Do not
+    keep searching once you have usable names/profiles — exhausting the
+    iteration limit without a Final Answer fails the whole run.
   expected_output: >
-    A markdown list of up to {candidate_count} candidates. For each candidate,
-    include: name, any publicly available contact info found, source URL(s),
-    and a brief suitability profile (2-4 sentences) explaining why they might
-    fit the role. Plain markdown, no code fences.
+    A markdown list of up to {candidate_count} candidates (fewer is OK if
+    the search yielded less). For each candidate, include: name, any
+    publicly available contact info found, source URL(s), and a brief
+    suitability profile (2-4 sentences) explaining why they might fit the
+    role. Plain markdown, no code fences.
   agent: researcher
 
 evaluate_and_score_candidates_task:
