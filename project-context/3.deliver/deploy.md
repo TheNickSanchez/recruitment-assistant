@@ -68,6 +68,7 @@ Names only — copy `.env.example` → `.env` (repo root) and `frontend/.env.exa
 | `SERPER_API_KEY` | repo-root `.env.example` | **Yes** (live runs) | `SerperDevTool` | Required for researcher/evaluator/recommender web search. |
 | `CREWAI_TELEMETRY_OPT_OUT` | repo-root `.env.example` | Recommended `true` | CrewAI anonymous telemetry | Distinct from AMP **tracing**. QA DEF-4: telemetry still attempted if the process never received the var (same as DEF-1). |
 | `CREWAI_TRACING_ENABLED` | repo-root `.env.example` | No (default `false`) | `RecruitmentCrew` (`tracing=True` when set) | Opt-in CrewAI AMP traces. Requires `crewai login`. Sends prompts/tool I/O (candidate data) to CrewAI AMP. |
+| `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` | repo-root `.env.example` (optional) | **Yes behind corp SSL intercept** | `app.ssl_bootstrap` → httpx | Path to a CA PEM (e.g. Zscaler). CrewAI PlusAPI uses `httpx` with `trust_env=False`, so env alone is ignored; the app forces `verify=<bundle>`. If unset, auto-detects `/Library/Application Support/DocuSign/zscaler-ca-bundle.pem` when present. |
 | `LOG_LEVEL` | repo-root `.env.example` | No (default `INFO`) | stdlib logging | `DEBUG` / `INFO` / `WARNING` / `ERROR`. Health and run-status polls are `DEBUG`. |
 | `LOG_TO_FILE` | repo-root `.env.example` | No (default `true`) | stdlib logging | Rotating `project-context/2.build/logs/app.log` (2 MB × 3 backups). Stdout always. |
 | `AAMAD_TARGET_RUNTIME` | repo-root `.env.example` | No (docs/config) | AAMAD / operator | `crewai`. Application runtime does not switch on this at request time. |
@@ -75,7 +76,7 @@ Names only — copy `.env.example` → `.env` (repo root) and `frontend/.env.exa
 | `APP_ENV` | repo-root `.env.example` | No | Startup log | Included in the INFO startup line (default `development`). |
 | `NEXT_PUBLIC_API_URL` | `frontend/.env.example` | No (has default) | Next.js browser client | Default `http://localhost:8000`. Must be set at **frontend build** time for Docker/production `next start`. |
 
-**How the backend gets keys (QA DEF-1)**: `python-dotenv` is listed in `backend/requirements.txt` but `load_dotenv` is **not** called in application code. This persona does not change application logic. Operators must inject env into the process:
+**How the backend gets keys (QA DEF-1 follow-up)**: `app.env_bootstrap.load_app_env(override=True)` loads repo-root `.env` at import/startup so IDE-injected `OPENAI_API_KEY=crsr_...` cannot shadow LiteLLM keys. Still preferred:
 
 - Local: `uvicorn ... --env-file ../.env` from `backend/` (or export vars in the shell).
 - Docker: `env_file: .env` in `docker-compose.yml`.
@@ -212,10 +213,18 @@ AMP tracing is **off by default** (`CREWAI_TRACING_ENABLED=false`) because trace
 
    Global alternative (same effect for Crews that do not pass `tracing=False`): `export CREWAI_TRACING_ENABLED=true` or `crewai traces enable`. This project’s explicit `tracing=` flag follows the env flag so the runbook and code stay aligned.
 
-4. Run a requisition through the chat UI (or `POST /api/runs`).
-5. View traces: log in at [app.crewai.com](https://app.crewai.com) → **Traces** tab, or open [trace batches](https://app.crewai.com/crewai_plus/trace_batches). You should see agent decisions, task timeline, tool calls, LLM calls, timing, and errors.
+4. Behind corporate SSL intercept (Zscaler), set a CA bundle (or rely on auto-detect of the DocuSign macOS path):
 
-`CREWAI_TELEMETRY_OPT_OUT=true` only suppresses anonymous telemetry (`telemetry.crewai.com`). It does **not** replace AMP tracing. If traces do not appear: confirm `crewai login`, `CREWAI_TRACING_ENABLED=true` in the **process** environment, a real crew execution (not the pytest stub), and network access to CrewAI AMP.
+   ```
+   SSL_CERT_FILE=/Library/Application Support/DocuSign/zscaler-ca-bundle.pem
+   ```
+
+   Without this, AMP uploads fail with `CERTIFICATE_VERIFY_FAILED` while curl may still succeed (different trust store).
+
+5. Run a requisition through the chat UI (or `POST /api/runs`).
+6. View traces: log in at [app.crewai.com](https://app.crewai.com) → **Traces** tab, or open [trace batches](https://app.crewai.com/crewai_plus/trace_batches). You should see agent decisions, task timeline, tool calls, LLM calls, timing, and errors.
+
+`CREWAI_TELEMETRY_OPT_OUT=true` only suppresses anonymous telemetry (`telemetry.crewai.com`). It does **not** replace AMP tracing. If traces do not appear: confirm `crewai login`, `crewai traces status` (User Consent ✅), `CREWAI_TRACING_ENABLED=true` in the **process** environment, a real crew execution (not the pytest stub), TLS trust via `SSL_CERT_FILE` / Zscaler bundle, and network access to CrewAI AMP.
 
 No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control remains `max_rpm=20` and bounded `candidate_count` (default 10, max 25).
 
@@ -233,7 +242,8 @@ No APM, metrics backend, or alerting in MVP (SAD §5). Crew-level cost control r
 | Polling never ends | No cancel/timeout in UI (qa.md known limitation) | Stop the backend or refresh the page; there is no cancel API. |
 | Docker frontend cannot reach API | `NEXT_PUBLIC_API_URL` set to `http://backend:8000` | Use `http://localhost:8000` (browser-side). Rebuild frontend. |
 | Python 3.14 install fails | Unsupported wheels | Use 3.13 (`.python-version` / backend image). |
-| CrewAI AMP traces missing | Not logged in; tracing env not on the process; **user consent declined**; pytest stub | `crewai login`; `crewai traces enable`; confirm `crewai traces status` shows User Consent ✅; `CREWAI_TRACING_ENABLED=true` + restart; run a real crew; check [Traces](https://app.crewai.com/crewai_plus/trace_batches). |
+| CrewAI AMP traces missing | Not logged in; tracing env not on the process; **user consent declined**; pytest stub; **Zscaler SSL** | `crewai login`; `crewai traces enable`; confirm User Consent ✅; `CREWAI_TRACING_ENABLED=true` + restart; set `SSL_CERT_FILE` to the Zscaler PEM (or use DocuSign auto-detect); run a real crew; check [Traces](https://app.crewai.com/crewai_plus/trace_batches). |
+| AMP upload `CERTIFICATE_VERIFY_FAILED` | Corp MITM; CrewAI `httpx` uses `trust_env=False` | Point `SSL_CERT_FILE` at the Zscaler CA bundle; restart so `app.ssl_bootstrap` patches httpx `verify`. |
 | Healthcheck slow to pass | CrewAI import at uvicorn startup | Compose `start_period` is 90s; wait and `docker compose logs backend`. |
 
 ## CI scaffolding (`*configure-cicd`)
@@ -317,3 +327,15 @@ No deploy job. Do not treat a green CI as a live-success-path certification (tha
 - **Prompt Trace (local)**: still omitted in-app; AMP traces optional
 - **Live deploy**: not executed
 - **Secrets**: env var names only; log redaction filter for API-key-like strings
+
+### Audit (LiteLLM + Zscaler SSL follow-up)
+
+- **Timestamp**: 2026-08-25
+- **Persona**: `devops-eng`
+- **Action**: `document-deploy` + operator-requested LiteLLM gateway env wiring and Zscaler CA bootstrap for AMP traces
+- **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai`
+- **LLM**: `app.llm.get_llm()` via `OPENAI_BASE_URL` / `custom_openai`; rejects Cursor `crsr_` keys; prefers `LITELLM_API_KEY` when set
+- **Env load**: `app.env_bootstrap.load_app_env(override=True)` at import/startup
+- **TLS**: `app.ssl_bootstrap.configure_ssl()` forces httpx `verify=<bundle>` because CrewAI PlusAPI sets `trust_env=False`; default DocuSign Zscaler path when present
+- **Live deploy**: not executed
+- **Secrets**: env var names only

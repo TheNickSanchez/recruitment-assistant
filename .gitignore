@@ -21,3 +21,4 @@ venv/
 project-context/2.build/logs/*.jsonl
 project-context/2.build/logs/*.log
 project-context/2.build/logs/*.log.*
+project-context/2.build/crewai-storage/

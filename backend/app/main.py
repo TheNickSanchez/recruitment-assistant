@@ -26,10 +26,13 @@ from app.models import (
     RunSubmissionResponse,
 )
 from app.run_store import run_store
+from app.ssl_bootstrap import configure_ssl
 from app.trace_log import log_event
 
 # Prefer repo-root .env over IDE-injected env (e.g. Cursor crsr_ OPENAI_API_KEY).
 load_app_env(override=True)
+# Corp SSL intercept (Zscaler): CrewAI PlusAPI ignores SSL_CERT_FILE (trust_env=False).
+configure_ssl()
 
 logger = get_logger("api")
 
@@ -37,14 +40,16 @@ logger = get_logger("api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_app_env(override=True)
+    configure_ssl()
     configure_logging()
     logger.info(
-        "startup app=%s env=%s runtime=crewai log_level=%s tracing=%s base_url=%s",
+        "startup app=%s env=%s runtime=crewai log_level=%s tracing=%s base_url=%s ssl_ca=%s",
         os.getenv("APP_NAME", "Recruitment Assistant"),
         os.getenv("APP_ENV", "development"),
         std_logging.getLevelName(log_level()),
         env_flag("CREWAI_TRACING_ENABLED"),
         os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "(default OpenAI)",
+        os.getenv("SSL_CERT_FILE") or "(default)",
     )
     yield
     logger.info("shutdown")
