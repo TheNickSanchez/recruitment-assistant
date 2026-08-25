@@ -179,6 +179,7 @@ supplied yet.
 - **Timestamp**: 2026-08-20
 - **Persona**: `integration-eng`
 - **Action**: `integrate-api` (`verify-messageflow`, `log-integration`)
+- **Resolved AAMAD_TARGET_RUNTIME**: AAMAD_TARGET_RUNTIME=crewai (from `aamad.config.yml`; integration layer is runtime-agnostic at the HTTP contract)
 - **Upstream artifacts**: `project-context/1.define/prd.md`, `project-context/1.define/sad.md`,
   `project-context/2.build/frontend.md`, `project-context/2.build/backend.md`
 - **Files changed**: `frontend/src/lib/runClient.ts` (rewritten from stub), `frontend/src/app/page.tsx`

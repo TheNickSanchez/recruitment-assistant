@@ -216,7 +216,7 @@ No functional UI crash, CORS block, or silent-failure defect was found on the im
 - **Timestamp**: 2026-08-20
 - **Persona**: `qa-eng`
 - **Actions**: `test-unit`, `test-integration`, `qa`, `verify-flow`, `log-defects`, `future-work`
-- **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai` (from `aamad.config.yml` `runtime.target`; this session’s shell had `AAMAD_TARGET_RUNTIME` unset)
+- **Resolved AAMAD_TARGET_RUNTIME**: AAMAD_TARGET_RUNTIME=crewai (from `aamad.config.yml` `runtime.target`; this session’s shell had the env var unset)
 - **Upstream artifacts**: `prd.md`, `sad.md`, `frontend.md`, `backend.md`, `integration.md`, `aamad.config.yml`
 - **Test results**: backend pytest **15/15 pass**; frontend eslint clean; `tsc --noEmit` clean; live API failure-path `pending → running → failed`; live UI chat failure-path + `network_error` path pass; live success-path **blocked** (DEF-1, DEF-2)
 - **Prompt Trace**: omitted — this artifact records QA execution, not a production LLM task; no CrewAI Prompt Trace exists in the app to attach

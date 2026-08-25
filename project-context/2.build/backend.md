@@ -187,8 +187,7 @@ rule lists it as a requirement, not just a nice-to-have.
 - **Timestamp**: 2026-08-20
 - **Persona**: `backend-eng`
 - **Action**: `develop-be` (`define-agents`, `implement-endpoint`, `document-backend`)
-- **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai` (from `aamad.config.yml`; no environment variable override
-  observed)
+- **Resolved AAMAD_TARGET_RUNTIME**: AAMAD_TARGET_RUNTIME=crewai (from `aamad.config.yml`; no environment variable override observed)
 - **Runtime controls recorded**: `Process.sequential`; `memory=False`; crew-level `max_rpm=20`; per-task
   `max_iter=12`, `max_retry_limit=2` (adapter rule baseline, unchanged — no epic-specific justification for
   deviating).

@@ -338,8 +338,7 @@ Unchanged from Draft v1.
 - **Timestamp**: 2026-08-20
 - **Persona**: `system-arch`
 - **Action**: `create-sad`
-- **Resolved `AAMAD_TARGET_RUNTIME`**: `crewai` (from `aamad.config.yml`; no environment variable override
-  observed)
+- **Resolved AAMAD_TARGET_RUNTIME**: AAMAD_TARGET_RUNTIME=crewai (from `aamad.config.yml`; no environment variable override observed)
 - **Upstream artifacts**: `project-context/1.define/prd.md` (revised 2026-08-20),
   `project-context/1.define/mrd.md`
 - **Revision**: 2026-08-20 — superseded Draft v1. Changed agent design from 4 agents
